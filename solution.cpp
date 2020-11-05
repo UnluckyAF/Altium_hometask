@@ -25,27 +25,27 @@ struct StraightLine {
 };
 
 void input(istream& in, vector<Polygon>& polygons) {
-    int n;
-    in >> n;
-    polygons.reserve(n);
+    int polygonsNumber;
+    in >> polygonsNumber;
+    polygons.reserve(polygonsNumber);
 
-    for (int i = 0; i < n; ++i) {
-        int k;
-        in >> k;
-        Polygon p;
-        p.reserve(k); 
+    for (int i = 0; i < polygonsNumber; ++i) {
+        int pointsNumber;
+        in >> pointsNumber;
+        Polygon polygon;
+        polygon.reserve(pointsNumber); 
 
-        for (int j = 0; j < k; ++j) {
+        for (int j = 0; j < pointsNumber; ++j) {
             int x, y;
             in >> x >> y;
-            p.push_back({x, y});
+            polygon.push_back({x, y});
         }
-        polygons.push_back(p);
+        polygons.push_back(polygon);
     }
 }
 
 struct Node {
-    size_t Val;
+    size_t PolygonID;
     vector<Node *> children;
     Node *parent = nullptr;
 };
@@ -57,23 +57,24 @@ Node *getRoot(Node *node) {
     return node;
 }
 
+// walk pass through the tree of polygons and saves "components" from the tree
 void walk(Node *node, vector<vector<size_t>>& comps, vector<bool>& passed) {
     queue<pair<Node *, bool>> q;
     q.push({getRoot(node), false});
     while (!q.empty()) {
-        auto n = q.front();
+        auto curentNode = q.front();
         q.pop();
-        passed[n.first->Val] = true;
-        if (!n.second) {
+        passed[curentNode.first->PolygonID] = true;
+        if (!curentNode.second) {
             vector<size_t> component;
-            component.push_back(n.first->Val);
-            for (auto child : n.first->children) {
-                component.push_back(child->Val);
+            component.push_back(curentNode.first->PolygonID);
+            for (auto child : curentNode.first->children) {
+                component.push_back(child->PolygonID);
             }
             comps.push_back(component);
         }
-        for (auto child : n.first->children) {
-            q.push({child, !n.second});
+        for (auto child : curentNode.first->children) {
+            q.push({child, !curentNode.second});
         }
     }
 }
@@ -90,36 +91,40 @@ vector<vector<size_t>> parseTree(const vector<Node *>& tree) {
     return components;
 }
 
-vector<vector<size_t>> getComponents(const vector<Polygon>& polygons) {
-    vector<pair<Angle, size_t>> angles; // stores angle (3 connected points) and polygon number
-    int nk = 0;
+void getAngles(const vector<Polygon>& polygons, vector<pair<Angle, size_t>>& angles) {
+    int allPointsNumber = 0;
     for (Polygon p : polygons) {
-        nk += p.size();
+        allPointsNumber += p.size();
     }
-    angles.reserve(nk);
+    angles.reserve(allPointsNumber);
 
     for (size_t i = 0; i < polygons.size(); ++i) {
-        Polygon p = polygons[i];
-        for (size_t j = 0; j < p.size(); ++j) { // consider polygons to be correct, so there is 3 or more points in it
+        Polygon polygon = polygons[i];
+        for (size_t j = 0; j < polygon.size(); ++j) { // consider polygons to be correct, so there is 3 or more points in it
             if (j == 0) {
-                angles.push_back({{p[j], {p.back(), p[j + 1]}}, i});
-            } else if (j < p.size() - 1) {
-                angles.push_back({{p[j], {p[j - 1], p[j + 1]}}, i});
+                angles.push_back({{polygon[j], {polygon.back(), polygon[j + 1]}}, i});
+            } else if (j < polygon.size() - 1) {
+                angles.push_back({{polygon[j], {polygon[j - 1], polygon[j + 1]}}, i});
             } else {
-                angles.push_back({{p[j], {p[j - 1], p.front()}}, i});
+                angles.push_back({{polygon[j], {polygon[j - 1], polygon.front()}}, i});
             }
         }
     }
+}
+
+vector<vector<size_t>> getComponents(const vector<Polygon>& polygons) {
+    vector<pair<Angle, size_t>> angles; // stores angle (3 connected points) and polygon number
+    getAngles(polygons, angles);
 
     int x = 0;
-    auto comp = [&x](const StraightLine& a, const StraightLine& b) {
+    auto comparator = [&x](const StraightLine& a, const StraightLine& b) {
         return a.getY(x) < b.getY(x);
     };
-    set<StraightLine, decltype(comp)> lines(comp);
+    set<StraightLine, decltype(comparator)> lines(comparator);
     sort(angles.begin(), angles.end(), [](const pair<Angle, size_t>& a, const pair<Angle, size_t>& b) {
         return a.first.first < b.first.first;
     });
-    vector<Node *> nodes(polygons.size(), nullptr);
+    vector<Node *> tree(polygons.size(), nullptr);
     
     for (auto p : angles) {
         Angle a = p.first;
@@ -149,10 +154,10 @@ vector<vector<size_t>> getComponents(const vector<Polygon>& polygons) {
                 up.PolyNum = p.second;
                 lines.insert(up);
             }
-            if (nodes[p.second] == nullptr) {
+            if (tree[p.second] == nullptr) {
                 Node *node = new Node;
-                node->Val = p.second;
-                nodes[p.second] = node;
+                node->PolygonID = p.second;
+                tree[p.second] = node;
             }
             continue;
         }
@@ -216,12 +221,12 @@ vector<vector<size_t>> getComponents(const vector<Polygon>& polygons) {
                             lines.insert(up);
                         }//TODO: add conditions
 
-                        if (nodes[p.second] == nullptr) {
+                        if (tree[p.second] == nullptr) {
                             Node *node = new Node;
-                            node->Val = p.second;
-                            nodes[p.second] = node;
-                            nodes[(*less).PolyNum]->children.push_back(node);
-                            node->parent = nodes[(*less).PolyNum];
+                            node->PolygonID = p.second;
+                            tree[p.second] = node;
+                            tree[(*less).PolyNum]->children.push_back(node);
+                            node->parent = tree[(*less).PolyNum];
                         }
                     }
                 } else if ((*less).UpDirection && (*greater).UpDirection) {
@@ -301,12 +306,12 @@ vector<vector<size_t>> getComponents(const vector<Polygon>& polygons) {
                             lines.insert(up);
                         }
                         
-                        if (nodes[p.second] == nullptr) {
+                        if (tree[p.second] == nullptr) {
                             Node *node = new Node();
-                            node->Val = p.second;
-                            nodes[p.second] = node;
-                            if (nodes[(*less).PolyNum]->parent != nullptr) {
-                                node->parent = nodes[(*less).PolyNum]->parent;
+                            node->PolygonID = p.second;
+                            tree[p.second] = node;
+                            if (tree[(*less).PolyNum]->parent != nullptr) {
+                                node->parent = tree[(*less).PolyNum]->parent;
                                 node->parent->children.push_back(node);
                             }
                         }
@@ -416,12 +421,12 @@ vector<vector<size_t>> getComponents(const vector<Polygon>& polygons) {
                             lines.insert(up);
                         }
 
-                        if (nodes[p.second] == nullptr) {
+                        if (tree[p.second] == nullptr) {
                             Node *node = new Node;
-                            node->Val = p.second;
-                            nodes[p.second] = node;
-                            nodes[(*less).PolyNum]->children.push_back(node);
-                            node->parent = nodes[(*less).PolyNum];
+                            node->PolygonID = p.second;
+                            tree[p.second] = node;
+                            tree[(*less).PolyNum]->children.push_back(node);
+                            node->parent = tree[(*less).PolyNum];
                         }
                     }
                 } else if (!(*less).UpDirection && !(*greater).UpDirection) {
@@ -501,12 +506,12 @@ vector<vector<size_t>> getComponents(const vector<Polygon>& polygons) {
                             lines.insert(up);
                         }
 
-                        if (nodes[p.second] == nullptr) {
+                        if (tree[p.second] == nullptr) {
                             Node *node = new Node;
-                            node->Val = p.second;
-                            nodes[p.second] = node;
-                            nodes[(*greater).PolyNum]->children.push_back(node);
-                            node->parent = nodes[(*greater).PolyNum];
+                            node->PolygonID = p.second;
+                            tree[p.second] = node;
+                            tree[(*greater).PolyNum]->children.push_back(node);
+                            node->parent = tree[(*greater).PolyNum];
                         }
                     }
                 } else { // lines look outside
@@ -567,7 +572,7 @@ vector<vector<size_t>> getComponents(const vector<Polygon>& polygons) {
                             if (down.getY(a.second.first.first) > double(a.second.first.second)) {
                                 swap(up, down);
                             }
-                            if (nodes[p.second] == nullptr) { // this condition at the same time represents that polygon is not parent of two closest polygons
+                            if (tree[p.second] == nullptr) { // this condition at the same time represents that polygon is not parent of two closest polygons
                                 up.UpDirection = false;
                                 down.UpDirection = true;
                             } else {
@@ -581,7 +586,7 @@ vector<vector<size_t>> getComponents(const vector<Polygon>& polygons) {
                             lines.insert(down);
                         } else if (a.second.first.first > a.first.first && a.second.second.first <= a.first.first) {
                             StraightLine up = StraightLine(a.first, a.second.first);
-                            if (nodes[(*less).PolyNum]->parent == nodes[p.second]) {
+                            if (tree[(*less).PolyNum]->parent == tree[p.second]) {
                                 up.UpDirection = false;
                             } else {
                                 up.UpDirection = true;
@@ -590,7 +595,7 @@ vector<vector<size_t>> getComponents(const vector<Polygon>& polygons) {
                             lines.insert(up);
                         } else if (a.second.second.first > a.first.first && a.second.first.first <= a.first.first) {
                             StraightLine up = StraightLine(a.first, a.second.second);
-                            if (nodes[(*less).PolyNum]->parent == nodes[p.second]) {
+                            if (tree[(*less).PolyNum]->parent == tree[p.second]) {
                                 up.UpDirection = false;
                             } else {
                                 up.UpDirection = true;
@@ -599,12 +604,12 @@ vector<vector<size_t>> getComponents(const vector<Polygon>& polygons) {
                             lines.insert(up);
                         }
 
-                        if (nodes[p.second] == nullptr) {
+                        if (tree[p.second] == nullptr) {
                             Node *node = new Node;
-                            node->Val = p.second;
-                            nodes[p.second] = node;
-                            if (nodes[(*greater).PolyNum]->parent != nullptr) {
-                                node->parent = nodes[(*greater).PolyNum]->parent;
+                            node->PolygonID = p.second;
+                            tree[p.second] = node;
+                            if (tree[(*greater).PolyNum]->parent != nullptr) {
+                                node->parent = tree[(*greater).PolyNum]->parent;
                                 node->parent->children.push_back(node);
                             }
                         }
@@ -660,15 +665,15 @@ vector<vector<size_t>> getComponents(const vector<Polygon>& polygons) {
                 up.PolyNum = p.second;
                 lines.insert(up);
             }
-            if (nodes[p.second] == nullptr) {
+            if (tree[p.second] == nullptr) {
                 Node *node = new Node;
-                node->Val = p.second;
-                nodes[p.second] = node;
+                node->PolygonID = p.second;
+                tree[p.second] = node;
             }
         }
     }
 
-    return parseTree(nodes);
+    return parseTree(tree);
 }
 
 int main(int argc, char **argv) {
