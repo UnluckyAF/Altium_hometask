@@ -112,6 +112,70 @@ void getAngles(const vector<Polygon>& polygons, vector<pair<Angle, size_t>>& ang
     }
 }
 
+template <typename SetType>
+void updateBothLines(pair<Angle, size_t> polygonAngle, SetType& lines, int& x, bool inside) {
+    Angle angle =  polygonAngle.first;
+    StraightLine up = StraightLine(angle.first, angle.second.first);
+    StraightLine down = StraightLine(angle.first, angle.second.second);
+    if (down.getY(angle.second.first.first) > double(angle.second.first.second)) {
+        swap(up, down);
+    }
+    if (inside) {
+        up.UpDirection = false;
+        down.UpDirection = true;
+    } else {
+        up.UpDirection = true;
+        down.UpDirection = false;
+    }
+    up.PolyNum = polygonAngle.second;
+    down.PolyNum = polygonAngle.second;
+    x += 1; // for lines to not be deleted
+    lines.insert(up);
+    lines.insert(down);
+}
+
+template <typename SetType>
+void updateFirstLine(pair<Angle, size_t> polygonAngle, SetType& lines, bool upside) {
+    Angle angle =  polygonAngle.first;
+    StraightLine up = StraightLine(angle.first, angle.second.first);
+    up.UpDirection = upside;
+    up.PolyNum = polygonAngle.second;
+    lines.insert(up);
+}
+
+template <typename SetType>
+void updateSecondLine(pair<Angle, size_t> polygonAngle, SetType& lines, bool upside) {
+    Angle angle =  polygonAngle.first;
+    StraightLine up = StraightLine(angle.first, angle.second.second);
+    up.UpDirection = upside;
+    up.PolyNum = polygonAngle.second;
+    lines.insert(up);
+}
+
+void updateTree(vector<Node *>& tree, size_t polygonID, Node *parent) {
+    if (tree[polygonID] == nullptr) {
+        Node *node = new Node;
+        node->PolygonID = polygonID;
+        tree[polygonID] = node;
+        if (parent != nullptr) {
+            node->parent = parent;
+            parent->children.push_back(node);
+        }
+    }
+}
+
+template <typename SetType>
+void updateLines(pair<Angle, size_t> polygonAngle, SetType& lines, int& x, bool inside, bool upside) {
+    Angle angle =  polygonAngle.first;
+    if (angle.second.first.first > angle.first.first && angle.second.second.first > angle.first.first) {
+        updateBothLines(polygonAngle, lines, x, inside);
+    } else if (angle.second.first.first > angle.first.first && angle.second.second.first <= angle.first.first) {
+        updateFirstLine(polygonAngle, lines, upside);
+    } else if (angle.second.second.first > angle.first.first && angle.second.first.first <= angle.first.first) {
+        updateSecondLine(polygonAngle, lines, upside);
+    }
+}
+
 vector<vector<size_t>> getComponents(const vector<Polygon>& polygons) {
     vector<pair<Angle, size_t>> angles; // stores angle (3 connected points) and polygon number
     getAngles(polygons, angles);
@@ -125,551 +189,134 @@ vector<vector<size_t>> getComponents(const vector<Polygon>& polygons) {
         return a.first.first < b.first.first;
     });
     vector<Node *> tree(polygons.size(), nullptr);
-    
-    for (auto p : angles) {
-        Angle a = p.first;
-        x = a.first.first;
+
+    for (auto polygonAngle : angles) {
+        Angle angle = polygonAngle.first;
+        x = angle.first.first;
         if (lines.empty()) {
-            if (a.second.first.first > a.first.first && a.second.second.first > a.first.first) {
-                StraightLine up = StraightLine(a.first, a.second.first);
-                StraightLine down = StraightLine(a.first, a.second.second);
-                if (down.getY(a.second.first.first) > double(a.second.first.second)) {
-                    swap(up, down);
-                }
-                up.UpDirection = false;
-                down.UpDirection = true;
-                up.PolyNum = p.second;
-                down.PolyNum = p.second;
-                x += 1; // for lines to not be deleted
-                lines.insert(up);
-                lines.insert(down);
-            } else if (a.second.first.first > a.first.first && a.second.second.first <= a.first.first) {
-                StraightLine up = StraightLine(a.first, a.second.first);
-                up.UpDirection = true;
-                up.PolyNum = p.second;
-                lines.insert(up);
-            } else if (a.second.second.first > a.first.first && a.second.first.first <= a.first.first) {
-                StraightLine up = StraightLine(a.first, a.second.second);
-                up.UpDirection = true;
-                up.PolyNum = p.second;
-                lines.insert(up);
-            }
-            if (tree[p.second] == nullptr) {
-                Node *node = new Node;
-                node->PolygonID = p.second;
-                tree[p.second] = node;
-            }
+            
+            updateLines(polygonAngle, lines, x, true, true);
+            updateTree(tree, polygonAngle.second, nullptr);
+            
             continue;
         }
 
         // find bounds
-        lines.erase(StraightLine(0, 1, -a.first.second));
-        auto greater = lines.upper_bound(StraightLine(0, 1, -a.first.second));
+        lines.erase(StraightLine(0, 1, -angle.first.second));
+        auto greater = lines.upper_bound(StraightLine(0, 1, -angle.first.second));
 
         if (greater != lines.end() && greater != lines.begin()) {
             auto less = prev(greater);
             if ((*less).PolyNum == (*greater).PolyNum) { // lines from the same polygon
                 if ((*less).UpDirection && !(*greater).UpDirection) { // both lines look inside
-                    if ((*less).PolyNum == p.second) { // the point of polygon inside of polygon
-                        if (a.second.first.first > a.first.first && a.second.second.first > a.first.first) {
-                            StraightLine up = StraightLine(a.first, a.second.first);
-                            StraightLine down = StraightLine(a.first, a.second.second);
-                            if (down.getY(a.second.first.first) > double(a.second.first.second)) {
-                                swap(up, down);
-                            }
-                            up.UpDirection = true;
-                            down.UpDirection = false;
-                            up.PolyNum = p.second;
-                            down.PolyNum = p.second;
-                            x += 1; // for lines to not be deleted
-                            lines.insert(up);
-                            lines.insert(down);
-                        } else if (a.second.first.first > a.first.first && a.second.second.first <= a.first.first) {
-                            StraightLine up = StraightLine(a.first, a.second.first);
-                            up.UpDirection = false;
-                            up.PolyNum = p.second;
-                            lines.insert(up);
-                        } else if (a.second.second.first > a.first.first && a.second.first.first <= a.first.first) {
-                            StraightLine up = StraightLine(a.first, a.second.second);
-                            up.UpDirection = false;
-                            up.PolyNum = p.second;
-                            lines.insert(up);
-                        }
-                    } else { // the point is inside polygon but from other polygon
-                        if (a.second.first.first > a.first.first && a.second.second.first > a.first.first) {
-                            StraightLine up = StraightLine(a.first, a.second.first);
-                            StraightLine down = StraightLine(a.first, a.second.second);
-                            if (down.getY(a.second.first.first) > double(a.second.first.second)) {
-                                swap(up, down);
-                            }
-                            up.UpDirection = false;
-                            down.UpDirection = true;
-                            up.PolyNum = p.second;
-                            down.PolyNum = p.second;
-                            x += 1; // for lines to not be deleted
-                            lines.insert(up);
-                            lines.insert(down);
-                        } else if (a.second.first.first > a.first.first && a.second.second.first <= a.first.first) {
-                            StraightLine up = StraightLine(a.first, a.second.first);
-                            up.UpDirection = true;
-                            up.PolyNum = p.second;
-                            lines.insert(up);
-                        } else if (a.second.second.first > a.first.first && a.second.first.first <= a.first.first) {
-                            StraightLine up = StraightLine(a.first, a.second.second);
-                            up.UpDirection = true;
-                            up.PolyNum = p.second;
-                            lines.insert(up);
-                        }//TODO: add conditions
+                    if ((*less).PolyNum == polygonAngle.second) { // the point of polygon inside of polygon
 
-                        if (tree[p.second] == nullptr) {
-                            Node *node = new Node;
-                            node->PolygonID = p.second;
-                            tree[p.second] = node;
-                            tree[(*less).PolyNum]->children.push_back(node);
-                            node->parent = tree[(*less).PolyNum];
-                        }
+                        updateLines(polygonAngle, lines, x, false, false);
+
+                    } else { // the point is inside polygon but from other polygon
+
+                        updateLines(polygonAngle, lines, x, true, true);
+                        updateTree(tree, polygonAngle.second, tree[(*less).PolyNum]);
                     }
                 } else if ((*less).UpDirection && (*greater).UpDirection) {
-                    if (a.second.first.first > a.first.first && a.second.second.first <= a.first.first) {
-                        StraightLine up = StraightLine(a.first, a.second.first);
-                        up.UpDirection = false;
-                        up.PolyNum = p.second;
-                        lines.insert(up);
-                    } else {
-                        StraightLine up = StraightLine(a.first, a.second.second);
-                        up.UpDirection = false;
-                        up.PolyNum = p.second;
-                        lines.insert(up);
-                    }
+
+                    updateLines(polygonAngle, lines, x, false, false); // in this case first condition of updateLines is imposible
+
                 } else if (!(*less).UpDirection && !(*greater).UpDirection) {
-                    if (a.second.first.first > a.first.first && a.second.second.first <= a.first.first) {
-                        StraightLine up = StraightLine(a.first, a.second.first);
-                        up.UpDirection = true;
-                        up.PolyNum = p.second;
-                        lines.insert(up);
-                    } else {
-                        StraightLine up = StraightLine(a.first, a.second.second);
-                        up.UpDirection = true;
-                        up.PolyNum = p.second;
-                        lines.insert(up);
-                    }
+
+                    updateLines(polygonAngle, lines, x, true, true); // in this case first condition of updateLines is imposible
+
                 } else {
-                    if ((*less).PolyNum == p.second) { // the point of polygon outside of polygon
-                        // TODO: probably with 2 more conditions
-                        if (a.second.first.first > a.first.first && a.second.second.first > a.first.first) {
-                            StraightLine up = StraightLine(a.first, a.second.first);
-                            StraightLine down = StraightLine(a.first, a.second.second);
-                            if (down.getY(a.second.first.first) > double(a.second.first.second)) {
-                                swap(up, down);
-                            }
-                            up.UpDirection = false;
-                            down.UpDirection = true;
-                            up.PolyNum = p.second;
-                            down.PolyNum = p.second;
-                            x += 1; // for lines to not be deleted
-                            lines.insert(up);
-                            lines.insert(down);
-                        } else if (a.second.first.first > a.first.first && a.second.second.first <= a.first.first) {
-                            StraightLine up = StraightLine(a.first, a.second.first);
-                            up.UpDirection = true;
-                            up.PolyNum = p.second;
-                            lines.insert(up);
-                        } else if (a.second.second.first > a.first.first && a.second.first.first <= a.first.first) {
-                            StraightLine up = StraightLine(a.first, a.second.second);
-                            up.UpDirection = true;
-                            up.PolyNum = p.second;
-                            lines.insert(up);
-                        }
+                    if ((*less).PolyNum == polygonAngle.second) { // the point of polygon outside of polygon
+
+                        updateLines(polygonAngle, lines, x, true, true);
+
                     } else { // the point is outside polygon but from other polygon
-                        if (a.second.first.first > a.first.first && a.second.second.first > a.first.first) {
-                            StraightLine up = StraightLine(a.first, a.second.first);
-                            StraightLine down = StraightLine(a.first, a.second.second);
-                            if (down.getY(a.second.first.first) > double(a.second.first.second)) {
-                                swap(up, down);
-                            }
-                            up.UpDirection = false;
-                            down.UpDirection = true;
-                            up.PolyNum = p.second;
-                            down.PolyNum = p.second;
-                            x += 1; // for lines to not be deleted
-                            lines.insert(up);
-                            lines.insert(down);
-                        } else if (a.second.first.first > a.first.first && a.second.second.first <= a.first.first) { 
-                            StraightLine up = StraightLine(a.first, a.second.first);
-                            up.UpDirection = true;
-                            up.PolyNum = p.second;
-                            lines.insert(up);
-                        } else if (a.second.second.first > a.first.first && a.second.first.first <= a.first.first) {
-                            StraightLine up = StraightLine(a.first, a.second.second);
-                            up.UpDirection = true;
-                            up.PolyNum = p.second;
-                            lines.insert(up);
-                        }
                         
-                        if (tree[p.second] == nullptr) {
-                            Node *node = new Node();
-                            node->PolygonID = p.second;
-                            tree[p.second] = node;
-                            if (tree[(*less).PolyNum]->parent != nullptr) {
-                                node->parent = tree[(*less).PolyNum]->parent;
-                                node->parent->children.push_back(node);
-                            }
-                        }
+                        updateLines(polygonAngle, lines, x, true, true);
+                        updateTree(tree, polygonAngle.second, tree[(*less).PolyNum]->parent);
                     }
                 }
             } else { // lines from different polygons
                 if ((*less).UpDirection && !(*greater).UpDirection) { // both lines look inside
-                    if ((*less).PolyNum == p.second) { // the point of polygon on the boarder with another polygon
-                        if (a.second.first.first > a.first.first && a.second.second.first <= a.first.first) { // in case above there are only two possible ways
-                            StraightLine up = StraightLine(a.first, a.second.first);
-                            up.UpDirection = false;
-                            up.PolyNum = p.second;
-                            lines.insert(up);
-                        } else if (a.second.second.first > a.first.first && a.second.first.first <= a.first.first) {
-                            StraightLine up = StraightLine(a.first, a.second.second);
-                            up.UpDirection = false;
-                            up.PolyNum = p.second;
-                            lines.insert(up);
-                        }
-                    } else if ((*greater).PolyNum == p.second) {
-                        if (a.second.first.first > a.first.first && a.second.second.first <= a.first.first) { // in case above there are only two possible ways
-                            StraightLine up = StraightLine(a.first, a.second.first);
-                            up.UpDirection = true;
-                            up.PolyNum = p.second;
-                            lines.insert(up);
-                        } else if (a.second.second.first > a.first.first && a.second.first.first <= a.first.first) {
-                            StraightLine up = StraightLine(a.first, a.second.second);
-                            up.UpDirection = true;
-                            up.PolyNum = p.second;
-                            lines.insert(up);
-                        }
+                    if ((*less).PolyNum == polygonAngle.second) { // the point of polygon on the boarder with another polygon
+                        
+                        updateLines(polygonAngle, lines, x, false, false); // in this case first condition of updateLines is imposible
+
+                    } else if ((*greater).PolyNum == polygonAngle.second) {
+                        
+                        updateLines(polygonAngle, lines, x, true, true); // in this case first condition of updateLines is imposible
+
                     }
                 } else if ((*less).UpDirection && (*greater).UpDirection) {
-                    if ((*less).PolyNum == p.second) { // the point of polygon on the boarder with another polygon
-                        if (a.second.first.first > a.first.first && a.second.second.first > a.first.first) {
-                            StraightLine up = StraightLine(a.first, a.second.first);
-                            StraightLine down = StraightLine(a.first, a.second.second);
-                            if (down.getY(a.second.first.first) > double(a.second.first.second)) {
-                                swap(up, down);
-                            }
-                            up.UpDirection = true;
-                            down.UpDirection = false;
-                            up.PolyNum = p.second;
-                            down.PolyNum = p.second;
-                            x += 1; // for lines to not be deleted
-                            lines.insert(up);
-                            lines.insert(down);
-                        } else if (a.second.first.first > a.first.first && a.second.second.first <= a.first.first) {
-                            StraightLine up = StraightLine(a.first, a.second.first);
-                            up.UpDirection = false;
-                            up.PolyNum = p.second;
-                            lines.insert(up);
-                        } else if (a.second.second.first > a.first.first && a.second.first.first <= a.first.first) {
-                            StraightLine up = StraightLine(a.first, a.second.second);
-                            up.UpDirection = false;
-                            up.PolyNum = p.second;
-                            lines.insert(up);
-                        }
-                    } else if ((*greater).PolyNum == p.second) {
-                        if (a.second.first.first > a.first.first && a.second.second.first > a.first.first) {
-                            StraightLine up = StraightLine(a.first, a.second.first);
-                            StraightLine down = StraightLine(a.first, a.second.second);
-                            if (down.getY(a.second.first.first) > double(a.second.first.second)) {
-                                swap(up, down);
-                            }
-                            up.UpDirection = false;
-                            down.UpDirection = true;
-                            up.PolyNum = p.second;
-                            down.PolyNum = p.second;
-                            x += 1; // for lines to not be deleted
-                            lines.insert(up);
-                            lines.insert(down);
-                        } else if (a.second.first.first > a.first.first && a.second.second.first <= a.first.first) {
-                            StraightLine up = StraightLine(a.first, a.second.first);
-                            up.UpDirection = true;
-                            up.PolyNum = p.second;
-                            lines.insert(up);
-                        } else if (a.second.second.first > a.first.first && a.second.first.first <= a.first.first) {
-                            StraightLine up = StraightLine(a.first, a.second.second);
-                            up.UpDirection = true;
-                            up.PolyNum = p.second;
-                            lines.insert(up);
-                        }
-                    } else {
-                        if (a.second.first.first > a.first.first && a.second.second.first > a.first.first) {
-                            StraightLine up = StraightLine(a.first, a.second.first);
-                            StraightLine down = StraightLine(a.first, a.second.second);
-                            if (down.getY(a.second.first.first) > double(a.second.first.second)) {
-                                swap(up, down);
-                            }
-                            up.UpDirection = false;
-                            down.UpDirection = true;
-                            up.PolyNum = p.second;
-                            down.PolyNum = p.second;
-                            x += 1; // for lines to not be deleted
-                            lines.insert(up);
-                            lines.insert(down);
-                        } else if (a.second.first.first > a.first.first && a.second.second.first <= a.first.first) {
-                            StraightLine up = StraightLine(a.first, a.second.first);
-                            up.UpDirection = true;
-                            up.PolyNum = p.second;
-                            lines.insert(up);
-                        } else if (a.second.second.first > a.first.first && a.second.first.first <= a.first.first) {
-                            StraightLine up = StraightLine(a.first, a.second.second);
-                            up.UpDirection = true;
-                            up.PolyNum = p.second;
-                            lines.insert(up);
-                        }
+                    if ((*less).PolyNum == polygonAngle.second) { // the point of polygon on the boarder with another polygon
+                        
+                        updateLines(polygonAngle, lines, x, false, false);
 
-                        if (tree[p.second] == nullptr) {
-                            Node *node = new Node;
-                            node->PolygonID = p.second;
-                            tree[p.second] = node;
-                            tree[(*less).PolyNum]->children.push_back(node);
-                            node->parent = tree[(*less).PolyNum];
-                        }
+                    } else if ((*greater).PolyNum == polygonAngle.second) {
+                        
+                        updateLines(polygonAngle, lines, x, true, true);
+
+                    } else {
+                        
+                        updateLines(polygonAngle, lines, x, true, true);
+                        updateTree(tree, polygonAngle.second, tree[(*less).PolyNum]);
                     }
                 } else if (!(*less).UpDirection && !(*greater).UpDirection) {
-                    if ((*greater).PolyNum == p.second) { // the point of polygon on the boarder with another polygon
-                        if (a.second.first.first > a.first.first && a.second.second.first > a.first.first) {
-                            StraightLine up = StraightLine(a.first, a.second.first);
-                            StraightLine down = StraightLine(a.first, a.second.second);
-                            if (down.getY(a.second.first.first) > double(a.second.first.second)) {
-                                swap(up, down);
-                            }
-                            up.UpDirection = true;
-                            down.UpDirection = false;
-                            up.PolyNum = p.second;
-                            down.PolyNum = p.second;
-                            x += 1; // for lines to not be deleted
-                            lines.insert(up);
-                            lines.insert(down);
-                        } else if (a.second.first.first > a.first.first && a.second.second.first <= a.first.first) {
-                            StraightLine up = StraightLine(a.first, a.second.first);
-                            up.UpDirection = true;
-                            up.PolyNum = p.second;
-                            lines.insert(up);
-                        } else if (a.second.second.first > a.first.first && a.second.first.first <= a.first.first) {
-                            StraightLine up = StraightLine(a.first, a.second.second);
-                            up.UpDirection = true;
-                            up.PolyNum = p.second;
-                            lines.insert(up);
-                        }
-                    } else if ((*less).PolyNum == p.second) {
-                        if (a.second.first.first > a.first.first && a.second.second.first > a.first.first) {
-                            StraightLine up = StraightLine(a.first, a.second.first);
-                            StraightLine down = StraightLine(a.first, a.second.second);
-                            if (down.getY(a.second.first.first) > double(a.second.first.second)) {
-                                swap(up, down);
-                            }
-                            up.UpDirection = false;
-                            down.UpDirection = true;
-                            up.PolyNum = p.second;
-                            down.PolyNum = p.second;
-                            x += 1; // for lines to not be deleted
-                            lines.insert(up);
-                            lines.insert(down);
-                        } else if (a.second.first.first > a.first.first && a.second.second.first <= a.first.first) {
-                            StraightLine up = StraightLine(a.first, a.second.first);
-                            up.UpDirection = true;
-                            up.PolyNum = p.second;
-                            lines.insert(up);
-                        } else if (a.second.second.first > a.first.first && a.second.first.first <= a.first.first) {
-                            StraightLine up = StraightLine(a.first, a.second.second);
-                            up.UpDirection = true;
-                            up.PolyNum = p.second;
-                            lines.insert(up);
-                        }
-                    } else {
-                        if (a.second.first.first > a.first.first && a.second.second.first > a.first.first) {
-                            StraightLine up = StraightLine(a.first, a.second.first);
-                            StraightLine down = StraightLine(a.first, a.second.second);
-                            if (down.getY(a.second.first.first) > double(a.second.first.second)) {
-                                swap(up, down);
-                            }
-                            up.UpDirection = false;
-                            down.UpDirection = true;
-                            up.PolyNum = p.second;
-                            down.PolyNum = p.second;
-                            x += 1; // for lines to not be deleted
-                            lines.insert(up);
-                            lines.insert(down);
-                        } else if (a.second.first.first > a.first.first && a.second.second.first <= a.first.first) {
-                            StraightLine up = StraightLine(a.first, a.second.first);
-                            up.UpDirection = true;
-                            up.PolyNum = p.second;
-                            lines.insert(up);
-                        } else if (a.second.second.first > a.first.first && a.second.first.first <= a.first.first) {
-                            StraightLine up = StraightLine(a.first, a.second.second);
-                            up.UpDirection = true;
-                            up.PolyNum = p.second;
-                            lines.insert(up);
-                        }
+                    if ((*greater).PolyNum == polygonAngle.second) { // the point of polygon on the boarder with another polygon
+                        
+                        updateLines(polygonAngle, lines, x, false, true);
 
-                        if (tree[p.second] == nullptr) {
-                            Node *node = new Node;
-                            node->PolygonID = p.second;
-                            tree[p.second] = node;
-                            tree[(*greater).PolyNum]->children.push_back(node);
-                            node->parent = tree[(*greater).PolyNum];
-                        }
+                    } else if ((*less).PolyNum == polygonAngle.second) {
+                        
+                        updateLines(polygonAngle, lines, x, true, true);
+
+                    } else {
+                        
+                        updateLines(polygonAngle, lines, x, true, true);
+                        updateTree(tree, polygonAngle.second, tree[(*greater).PolyNum]);
                     }
                 } else { // lines look outside
-                    if ((*greater).PolyNum == p.second) { // the point of polygon on the boarder with another polygon
-                        if (a.second.first.first > a.first.first && a.second.second.first > a.first.first) {
-                            StraightLine up = StraightLine(a.first, a.second.first);
-                            StraightLine down = StraightLine(a.first, a.second.second);
-                            if (down.getY(a.second.first.first) > double(a.second.first.second)) {
-                                swap(up, down);
-                            }
-                            up.UpDirection = false;
-                            down.UpDirection = true;
-                            up.PolyNum = p.second;
-                            down.PolyNum = p.second;
-                            x += 1; // for lines to not be deleted
-                            lines.insert(up);
-                            lines.insert(down);
-                        } else if (a.second.first.first > a.first.first && a.second.second.first <= a.first.first) {
-                            StraightLine up = StraightLine(a.first, a.second.first);
-                            up.UpDirection = false;
-                            up.PolyNum = p.second;
-                            lines.insert(up);
-                        } else if (a.second.second.first > a.first.first && a.second.first.first <= a.first.first) {
-                            StraightLine up = StraightLine(a.first, a.second.second);
-                            up.UpDirection = false;
-                            up.PolyNum = p.second;
-                            lines.insert(up);
-                        }
-                    } else if ((*less).PolyNum == p.second) {
-                        if (a.second.first.first > a.first.first && a.second.second.first > a.first.first) {
-                            StraightLine up = StraightLine(a.first, a.second.first);
-                            StraightLine down = StraightLine(a.first, a.second.second);
-                            if (down.getY(a.second.first.first) > double(a.second.first.second)) {
-                                swap(up, down);
-                            }
-                            up.UpDirection = false;
-                            down.UpDirection = true;
-                            up.PolyNum = p.second;
-                            down.PolyNum = p.second;
-                            x += 1; // for lines to not be deleted
-                            lines.insert(up);
-                            lines.insert(down);
-                        } else if (a.second.first.first > a.first.first && a.second.second.first <= a.first.first) {
-                            StraightLine up = StraightLine(a.first, a.second.first);
-                            up.UpDirection = true;
-                            up.PolyNum = p.second;
-                            lines.insert(up);
-                        } else if (a.second.second.first > a.first.first && a.second.first.first <= a.first.first) {
-                            StraightLine up = StraightLine(a.first, a.second.second);
-                            up.UpDirection = true;
-                            up.PolyNum = p.second;
-                            lines.insert(up);
-                        }
-                    } else { // point and lines are from different polygons
-                        if (a.second.first.first > a.first.first && a.second.second.first > a.first.first) {
-                            StraightLine up = StraightLine(a.first, a.second.first);
-                            StraightLine down = StraightLine(a.first, a.second.second);
-                            if (down.getY(a.second.first.first) > double(a.second.first.second)) {
-                                swap(up, down);
-                            }
-                            if (tree[p.second] == nullptr) { // this condition at the same time represents that polygon is not parent of two closest polygons
-                                up.UpDirection = false;
-                                down.UpDirection = true;
-                            } else {
-                                up.UpDirection = true;
-                                down.UpDirection = false;
-                            }
-                            up.PolyNum = p.second;
-                            down.PolyNum = p.second;
-                            x += 1; // for lines to not be deleted
-                            lines.insert(up);
-                            lines.insert(down);
-                        } else if (a.second.first.first > a.first.first && a.second.second.first <= a.first.first) {
-                            StraightLine up = StraightLine(a.first, a.second.first);
-                            if (tree[(*less).PolyNum]->parent == tree[p.second]) {
-                                up.UpDirection = false;
-                            } else {
-                                up.UpDirection = true;
-                            }
-                            up.PolyNum = p.second;
-                            lines.insert(up);
-                        } else if (a.second.second.first > a.first.first && a.second.first.first <= a.first.first) {
-                            StraightLine up = StraightLine(a.first, a.second.second);
-                            if (tree[(*less).PolyNum]->parent == tree[p.second]) {
-                                up.UpDirection = false;
-                            } else {
-                                up.UpDirection = true;
-                            }
-                            up.PolyNum = p.second;
-                            lines.insert(up);
-                        }
+                    if ((*greater).PolyNum == polygonAngle.second) { // the point of polygon on the boarder with another polygon
+                        
+                        updateLines(polygonAngle, lines, x, true, false);
 
-                        if (tree[p.second] == nullptr) {
-                            Node *node = new Node;
-                            node->PolygonID = p.second;
-                            tree[p.second] = node;
-                            if (tree[(*greater).PolyNum]->parent != nullptr) {
-                                node->parent = tree[(*greater).PolyNum]->parent;
-                                node->parent->children.push_back(node);
-                            }
-                        }
+                    } else if ((*less).PolyNum == polygonAngle.second) {
+                        
+                        updateLines(polygonAngle, lines, x, true, true);
+
+                    } else { // point and lines are from different polygons
+                        updateLines(
+                                polygonAngle,
+                                lines,
+                                x,
+                                tree[polygonAngle.second] == nullptr,
+                                tree[(*less).PolyNum]->parent != tree[polygonAngle.second]
+                        );
+                        updateTree(tree, polygonAngle.second, tree[(*greater).PolyNum]->parent);
                     }
                 }
             }
         } else {
-            if (a.second.first.first > a.first.first && a.second.second.first > a.first.first) {
-                StraightLine up = StraightLine(a.first, a.second.first);
-                StraightLine down = StraightLine(a.first, a.second.second);
-                if (down.getY(a.second.first.first) > double(a.second.first.second)) {
-                    swap(up, down);
-                }
+            if (!lines.empty()) {
+                bool inside;
                 if (greater != lines.end()) {
                     if ((*greater).UpDirection) {
-                        up.UpDirection = false;
-                        down.UpDirection = true;
+                        inside = true;
                     } else {
-                        up.UpDirection = true;
-                        down.UpDirection = false;
+                        inside = false;
                     }
                 } else {
                     auto less = prev(greater);
                     if ((*less).UpDirection) {
-                        up.UpDirection = true;
-                        down.UpDirection = false;
+                        inside = false;
                     } else {
-                        up.UpDirection = false;
-                        down.UpDirection = true;
+                        inside = true;
                     }
                 }
-                up.PolyNum = p.second;
-                down.PolyNum = p.second;
-                x += 1; // for lines to not be deleted
-                lines.insert(up);
-                lines.insert(down);
-            } else if (a.second.first.first > a.first.first && a.second.second.first <= a.first.first) {
-                StraightLine up = StraightLine(a.first, a.second.first);
-                if (greater != lines.end()) {
-                    up.UpDirection = true;
-                } else {
-                    up.UpDirection = false;
-                }
-                up.PolyNum = p.second;
-                lines.insert(up);
-            } else if (a.second.second.first > a.first.first && a.second.first.first <= a.first.first) {
-                StraightLine up = StraightLine(a.first, a.second.second);
-                if (greater != lines.end()) {
-                    up.UpDirection = true;
-                } else {
-                    up.UpDirection = false;
-                }
-                up.PolyNum = p.second;
-                lines.insert(up);
+                updateLines(polygonAngle, lines, x, inside, greater != lines.end());
             }
-            if (tree[p.second] == nullptr) {
-                Node *node = new Node;
-                node->PolygonID = p.second;
-                tree[p.second] = node;
-            }
+            updateTree(tree, polygonAngle.second, nullptr);
         }
     }
 
