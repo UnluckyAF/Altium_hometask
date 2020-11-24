@@ -10,7 +10,7 @@ run:
 test: build
 	for name in tests/[A-Z]; do\
 		echo "------------------------------------------------------\n";\
-		echo "TEST CASE:\n";\
+		echo "TEST CASE $${name}:\n";\
 		cat $${name};\
 		echo "------------------------------------------------------\n";\
 		echo "SOLUTION'S ANSWER:\n";\
