@@ -21,7 +21,7 @@ typedef vector<Point> Polygon;
 struct StraightLine {
     int A, B, C;
     size_t PolyNum;
-    bool UpDirection;
+    bool UpDirection; // shows if inner part of polygon lays above the line
 
     StraightLine(int a, int b, int c): A(a), B(b), C(c) {}
 
@@ -62,7 +62,7 @@ struct Node {
     vector<Node *> children;
     Node *parent = nullptr;
 
-    bool OnEvenLevel = false;
+    bool OnEvenLevel = false; // shows if node lays on even level, when we numerate levels of the tree from 1
 };
 
 Node *getRoot(Node *node) {
@@ -73,6 +73,9 @@ Node *getRoot(Node *node) {
 }
 
 // walk pass through the tree of polygons and saves "components" from the tree
+// node - the beginning of walk (root)
+// comps - result with components
+// passed - vector to mark passed nodes
 void walk(Node *node, vector<vector<size_t>>& comps, vector<bool>& passed) {
     queue<Node *> q;
     q.push(getRoot(node));
@@ -132,6 +135,10 @@ void getAngles(const vector<Polygon>& polygons, vector<Angle>& angles) {
 
 // updateBothLines is used to add lines of polygon's angle formed by the current point and it's neighbours
 // and fix the direction of inner part of polygon for both lines
+// polygonAngle - current angle of polygon
+// lines - pass set of StraightLines with special comparator
+// x - current Ox, here we pass x which is used in comparator
+// inside - shows if two lines of angle have inner part of polygon between these lines, so lines "look" inside
 template <typename SetType>
 void updateBothLines(Angle polygonAngle, SetType& lines, int& x, bool inside) {
     Angle angle =  polygonAngle;
@@ -156,6 +163,9 @@ void updateBothLines(Angle polygonAngle, SetType& lines, int& x, bool inside) {
 
 // updateFirstLine is used to add line of polygon's angle formed by the current point and it's neighbour
 // and fix the direction of inner part of polygon for line
+// polygonAngle - current angle of polygon
+// lines - pass set of StraightLines with special comparator
+// upside - shows if line of angle have inner part of polygon above, so line "looks" upside
 template <typename SetType>
 void updateFirstLine(Angle polygonAngle, SetType& lines, bool upside) {
     Angle angle =  polygonAngle;
@@ -167,6 +177,9 @@ void updateFirstLine(Angle polygonAngle, SetType& lines, bool upside) {
 
 // updateSecondLine is used to add line of polygon's angle formed by the current point and it's neighbour
 // and fix the direction of inner part of polygon for line
+// polygonAngle - current angle of polygon
+// lines - pass set of StraightLines with special comparator
+// upside - shows if line of angle have inner part of polygon above, so line "looks" upside
 template <typename SetType>
 void updateSecondLine(Angle polygonAngle, SetType& lines, bool upside) {
     Angle angle =  polygonAngle;
@@ -190,6 +203,11 @@ void updateTree(vector<Node *>& tree, size_t polygonID, Node *parent) {
 }
 
 // updateLines checks which lines of the angle start at the point and need to be added
+// polygonAngle - current angle of polygon
+// lines - pass set of StraightLines with special comparator
+// x - current Ox, here we pass x which is used in comparator
+// inside - shows if two lines of angle have inner part of polygon between these lines, needed for both lines case
+// upside - shows if line of angle have inner part of polygon above, needed for one line case
 template <typename SetType>
 void updateLines(Angle polygonAngle, SetType& lines, int& x, bool inside, bool upside) {
     Angle angle =  polygonAngle;
